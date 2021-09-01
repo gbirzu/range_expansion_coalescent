@@ -320,5 +320,273 @@ def calculate_node_x(nodes, N, L=300):
     return sorted_nodes
 
 
+def velocity(g, m, f):
+    D = m/2.
+    if f >= -0.5:
+        v = np.sqrt(D*g/2.)*(1 - 2.*f)
+    else:
+        v = 2.*np.sqrt(D*g*abs(f))
+    return v
+
+def velocity_Fisher(g, m, f):
+    D = m/2.
+    if f <= 0.0:
+        v_F = 2.*np.sqrt(D*g*abs(f))
+    else:
+        v_F = 0.
+    return v_F
+
+def v_coop(r, m, B):
+    D = m/2.
+    if B > 2.:
+        v = np.sqrt(D*r*B/2.)*(1 + 2./B)
+    else:
+        v = 2.*np.sqrt(D*r)
+    return v
+
+def vF_coop(r, m, B):
+    D = m/2.
+    vF = 2.*np.sqrt(D*r)
+    return vF
+
+def alpha_coop(B, r, m):
+    D = m/2.
+    v = v_coop(r, m, B)
+    vF = 2 * np.sqrt(D * r)
+    beta = np.sqrt(1 - (vF/v)**2)
+    return 2 * beta / (1 - beta)
+
+def growth(g, f, x):
+    return g*(1 - x)*(x - f)
+
+def profile(gf, migr, fstr, x):
+    D = migr/2.
+    if fstr > -0.5:
+        prof = 1./(1. + np.exp(np.sqrt(gf/(2.*D))*x))
+    else:
+        prof = 1./(1. + np.exp(np.sqrt(gf*abs(fstr)/D)*x))
+    return prof
+
+def fixation_const(gf, migr, fstr, x_min, x_max, dx):
+    x_arr = np.arange(x_min, x_max, dx)
+    c_arr = profile(gf, migr, fstr, x_arr)
+    v = velocity(gf, migr, fstr)
+    D = migr/2.
+
+    prelim_prob = c_arr**2*np.exp(v*x_arr/D)
+    const = integrate.simps(prelim_prob, x_arr)
+    return const
+
+def fixation_probability(gf, migr, fstr, x_min, x_max, dx, x):
+    c = profile(gf, migr, fstr, x)
+    v = velocity(gf, migr, fstr)
+    D = migr/2.
+    const = fixation_const(gf, migr, fstr, x_min, x_max, dx)
+    prob = c**2*np.exp(v*x/D)/const
+    return prob
+
+def ancestral_probability(gf, migr, fstr, x_min, x_max, dx, x):
+    c = profile(gf, migr, fstr, x)
+    v = velocity(gf, migr, fstr)
+    D = migr/2.
+    const = fixation_const(gf, migr, fstr, x_min, x_max, dx)
+    prob = c**3*np.exp(2*v*x/D)/(const**2)
+    return prob
+
+
+def Neff(gf, migr, fstr, N, x_min, x_max, dx):
+    x_arr = np.arange(x_min, x_max, dx)
+    c_arr = profile(gf, migr, fstr, x_arr)
+    v = velocity(gf, migr, fstr)
+    D = migr/2.
+
+    const = fixation_const(gf, migr, fstr, x_min, x_max, dx)
+    function = c_arr**3*np.exp(2*v*x_arr/D)/(const**2)
+
+    Ne = N/integrate.simps(function, x_arr)
+    return Ne
+
+def test_dx():
+    Ne_arr = []
+    dx_arr = np.logspace(-4, -1, 10)
+    for dx in dx_arr:
+        Ne = Neff(0.01, 0.25, -0.2, 10000, x_min, x_max, dx)
+        Ne_arr.append(Ne)
+
+def theory_exponent(fstr):
+    if fstr <-0.5:
+        exp = 0.
+    elif fstr < -.25:
+        exp = 2.*(1. + 2.*fstr)
+    elif fstr < 0.5:
+        exp = 1.
+    return exp
+
+def semipushed_theory(B):
+    exp = 2.*(1. - 2./fstr)
+    return exp
+
+def stoch_semi(a):
+    return (a - 2.)/2.
+
+def front_growth(labels_flag, save_flag, label_size):
+    font = {'family' : 'sans-serif', 'serif' : 'Helvetica Neue', 'weight' : 'bold', 'size' : 8}
+    matplotlib.rc('font', **font)
+
+    gf = 0.01
+    gf_pushed = 4*gf
+    m = 1.25
+    dx = 0.01
+    x_min = -40
+    x_max = 50
+    f_pulled = -1.0
+    f_pushed = 0.0
+
+    min_f = -0.8
+    max_f = -0.2
+    f_arr = np.arange(min_f, max_f, 0.01)
+    f_pulled_arr = np.arange(min_f, -0.5, 0.001)
+    f_pushed_arr = np.arange(-0.5, max_f, 0.001)
+    v_arr = np.array([velocity(gf, m, f) for f in f_arr])
+    vF_arr = np.array([velocity_Fisher(gf, m, f) for f in f_arr])
+    v_ratio_arr = v_arr/vF_arr
+
+    min_v = 0.95*min(v_ratio_arr)
+    max_v = 1.05*max(v_ratio_arr)
+
+    y_pp_transition = np.arange(min_v, max_v, 0.001)
+    x_pp_transition = -0.5*np.ones(len(y_pp_transition))
+
+    x_array = np.arange(x_min, x_max, 0.01)
+    pulled_profile = np.array([profile(gf, m, f_pulled, x) for x in x_array])
+    pulled_growth = np.array(growth(gf, f_pulled, pulled_profile))
+    pushed_profile = np.array([profile(gf_pushed, m, f_pushed, x) for x in x_array])
+    pushed_growth = np.array(growth(gf_pushed, f_pushed, pushed_profile))
+
+
+    fig = plt.figure(figsize=(cm2inch(17.8),cm2inch(5.4)))
+
+    gf = 0.01
+    m = 0.25
+    dx = 0.01
+    x_min = -30
+    x_max = 30
+    f_pulled = -1.0
+    f_pseudo = -0.4
+    f_pushed = -0.0
+
+    x_array = np.arange(x_min, x_max, 0.1)
+    x_array = np.append(x_array, [x_max])
+    pulled_profile = np.array([profile(gf, m, f_pulled, x) for x in x_array])
+    pulled_growth = np.array(growth(gf, f_pulled, pulled_profile))
+    pulled_fixation = np.array([fixation_probability(gf, m, f_pulled, x_min, x_max, dx, x) for x in x_array])
+    pulled_ancestry = np.array([ancestral_probability(gf, m, f_pulled, x_min, x_max, dx, x) for x in x_array])
+    pseudo_profile = np.array([profile(gf, m, f_pseudo, x) for x in x_array])
+    pseudo_growth = np.array(growth(gf, f_pseudo, pulled_profile))
+    pseudo_fixation = np.array([fixation_probability(gf, m, f_pseudo, x_min, x_max, dx, x) for x in x_array])
+    pseudo_ancestry = np.array([ancestral_probability(gf, m, f_pseudo, x_min, x_max, dx, x) for x in x_array])
+    pushed_profile = np.array([profile(gf, m, f_pushed, x) for x in x_array])
+    pushed_growth = np.array(growth(gf, f_pushed, pushed_profile))
+    pushed_fixation = np.array([fixation_probability(gf, m, f_pushed, x_min, x_max, dx, x) for x in x_array])
+    pushed_ancestry = np.array([ancestral_probability(gf, m, f_pushed, x_min, x_max, dx, x) for x in x_array])
+
+    pulled_growth_fill = np.array([[elem]*len(pulled_profile) for elem in pulled_growth])
+    pseudo_growth_fill = np.array([[elem]*len(pseudo_profile) for elem in pseudo_growth])
+    pushed_growth_fill = np.array([[elem]*len(pushed_profile) for elem in pushed_growth])
+    max_growth = max(pushed_growth)
+    min_growth = min(pushed_growth)
+
+
+    ax1 = fig.add_subplot(131)
+    #ax1.set_title('pulled', fontsize=12, fontweight='bold')
+    ax1.set_xlabel('position, x', fontsize=label_size, fontweight='bold')
+    ax1.set_ylabel('population density, n', fontsize=label_size, fontweight='bold')
+    ax1.set_xticks([-20, 0, 20, 40])
+    ax1.set_xticklabels([])
+    #ax1.set_yticks([0., 0.25, 0.5, 0.75, 1.])
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+    ax1.set_ylim([0.0, 1.1])
+    for tick in ax1.yaxis.get_major_ticks():
+        tick.label.set_fontsize(8)
+
+    ax1.contourf(x_array[:-1], pulled_profile[:-1], pulled_growth_fill[:-1].T[:-1], 200, cmap=plt.cm.winter)
+    ax1.fill_between(x_array, pulled_profile, y2=1.01*max(pulled_profile), color='w')
+    #ax1.text(1.10*x_min, 1.03*1.1, 'A', fontsize=12, fontweight='bold', color='k')
+    #ax1.plot(x_array, (1./max(pulled_fixation))*pulled_fixation, lw=2, c='r')
+    #ax1.plot(x_array, (1./max(pulled_ancestry))*pulled_ancestry, lw=2, c='purple')
+    #ax1.text(10, 0.80, 'ancestry', fontweight='bold', fontsize=8, color='r')
+    #ax1.text(6, 0.30, 'diversity', fontweight='bold', fontsize=8, color='purple')
+
+    growth_focus = x_array[np.argmax(pulled_growth)]
+    ancestry_focus = x_array[np.argmax(pulled_fixation)]
+    diversity_focus = x_array[np.argmax(pulled_ancestry)]
+    #ax1.scatter([growth_focus, ancestry_focus, diversity_focus], [0.1, 0.1, 0.1], s=80, edgecolor='none', color=['darkolivegreen', 'r', 'purple'])
+    #ax1.text(12, 0.75, 'ancestry\n'+'$\mathbf{\propto n^2 e^{v \zeta/D}}$', fontweight='bold', fontsize=8, color='r')
+    #ax1.text(6, 0.30, 'diversity\n'+'$\mathbf{\propto \gamma_f}$ $\mathbf{n^3 e^{2v \zeta/D}}$', fontweight='bold', fontsize=8, color='purple')
+
+
+    ax1 = fig.add_subplot(132)
+    #ax1.set_title('semi-pushed', fontsize=12, fontweight='bold')
+    ax1.set_xlabel('position, x', fontsize=label_size, fontweight='bold')
+    #ax1.set_ylabel('population density, n', fontsize=label_size, fontweight='bold')
+    ax1.set_xticks([-20, 0, 20, 40])
+    ax1.set_xticklabels([])
+    #ax1.set_yticks([0., 0.25, 0.5, 0.75, 1.])
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+    ax1.set_ylim([0.0, 1.1])
+    for tick in ax1.yaxis.get_major_ticks():
+        tick.label.set_fontsize(8)
+
+    ax1.contourf(x_array[:-1], pseudo_profile[:-1], pseudo_growth_fill[:-1].T[:-1], 200, cmap=plt.cm.winter)
+    ax1.fill_between(x_array, pseudo_profile, y2=1.01*max(pseudo_profile), color='w')
+    #ax1.text(1.10*x_min, 1.03*1.1, 'B', fontsize=12, fontweight='bold', color='k')
+    #ax1.plot(x_array, (1./max(pseudo_fixation))*pseudo_fixation, lw=2, c='r')
+    #ax1.plot(x_array, (1./max(pseudo_ancestry))*pseudo_ancestry, lw=2, c='purple')
+    growth_focus = x_array[np.argmax(pseudo_growth)]
+    ancestry_focus = x_array[np.argmax(pseudo_fixation)]
+    diversity_focus = x_array[np.argmax(pseudo_ancestry)]
+    #ax1.scatter([growth_focus, ancestry_focus, diversity_focus], [0.1, 0.1, 0.1], s=80, edgecolor='none', color=['darkolivegreen', 'r', 'purple'], zorder=3)
+
+
+
+    ax1 = fig.add_subplot(133)
+    #ax1.set_title('fully-pushed', fontsize=12, fontweight='bold')
+    ax1.set_xlabel('position, x', fontsize=label_size, fontweight='bold')
+    #ax1.set_ylabel('population density, n', fontsize=label_size, fontweight='bold')
+    ax1.set_xticks([-20, 0, 20, 40])
+    ax1.set_xticklabels([])
+    #ax1.set_yticks([0., 0.25, 0.5, 0.75, 1.])
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+    ax1.set_ylim([0.0, 1.1])
+    for tick in ax1.yaxis.get_major_ticks():
+        tick.label.set_fontsize(8)
+
+    cax = ax1.contourf(x_array[:-2], pushed_profile[:-2], pushed_growth_fill[:-2].T[:-2], 200, cmap=plt.cm.winter)
+    ax1.fill_between(x_array, pushed_profile, y2=1.01*max(pushed_profile), color='w')
+    #ax1.text(1.10*x_min, 1.03*1.1, 'C', fontsize=12, fontweight='bold', color='k')
+    #ax1.plot(x_array, (1./max(pushed_fixation))*pushed_fixation, lw=2, c='r')
+    #ax1.plot(x_array, (1./max(pushed_ancestry))*pushed_ancestry, lw=2, c='purple')
+
+    growth_focus = x_array[np.argmax(pushed_growth)]
+    ancestry_focus = x_array[np.argmax(pushed_fixation)]
+    diversity_focus = x_array[np.argmax(pushed_ancestry)]
+    #ax1.scatter([growth_focus, ancestry_focus, diversity_focus], [0.1, 0.1, 0.1], s=80, edgecolor='none', color=['darkolivegreen', 'r', 'purple'], zorder=2)
+
+
+    cbar = fig.colorbar(cax, ticks=[min_growth, max_growth])
+    cbar.ax.set_yticklabels(['low', 'high'])
+
+    ax1.text(42, 0.82, 'growth rate', fontsize=10, rotation=90)
+    #cbar.ax.set_ylabel('growth rate', rotation=90)
+
+    plt.tight_layout(pad=1.5)
+    #plt.savefig('./Fig1pushed_pulled_growth.tiff', dpi=500)
+
+    if save_flag != 0:
+        plt.savefig('../figures/draft/front_growth.pdf')
+
 if __name__ == '__main__':
     test_tools()
